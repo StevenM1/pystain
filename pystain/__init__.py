@@ -1,1 +1,2 @@
-from .pystain import StainDataset
+from .base import StainDataset
+from .cluster import StainCluster
