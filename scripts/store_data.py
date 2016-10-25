@@ -4,6 +4,8 @@ import glob
 import h5py
 import scipy as sp
 from scipy import ndimage
+import natsort
+import numpy as np
 
 fns = glob.glob('/home/gdholla1/data/post_mortem/STACKED_SLIDES/*/*')
 reg = re.compile('.*/(?P<subject_id>[0-9]{5})_PNG/(?P<stain>[A-Za-z0-9]+)_(?P<slice>[0-9]+)_[0-9]+_(?P<id>[0-9]+)\.png')
