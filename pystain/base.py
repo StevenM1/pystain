@@ -120,13 +120,13 @@ class StainDataset(object):
 
         return mask
 
-    def plot_axial_slice(self, slice=None, stain='SMI32', fwhm=0.15, plot_mask=True, thr=3, cmap=plt.cm.hot, crop=False, **kwargs):
+    def plot_axial_slice(self, slice=None, stain='SMI32', outline_color='green', fwhm=0.15, plot_mask=True, thr=3, cmap=plt.cm.hot, crop=False, **kwargs):
         
         
         sigma = fwhm / 2.335
         
-        sigma_x = sigma / self.xy_resolution # anterior-posterior 
-        sigma_y = sigma / self.z_resolution # inferior-superior
+        sigma_x = sigma / self.xy_resolution 
+        sigma_y = sigma / self.z_resolution 
         
         print sigma_x, sigma_y
         
@@ -136,17 +136,17 @@ class StainDataset(object):
             print 'yo'
             V=im.copy()
             V[im!=im]=0
-            VV=sp.ndimage.gaussian_filter(V,sigma=[sigma_x, sigma_y])
+            VV=sp.ndimage.gaussian_filter(V,sigma=[sigma_y, sigma_x])
 
             W=0*im.copy()+1
             W[im!=im]=0
-            WW=sp.ndimage.gaussian_filter(W,sigma=[sigma_x, sigma_y])
+            WW=sp.ndimage.gaussian_filter(W,sigma=[sigma_y, sigma_x])
             
             im=VV/WW
 
         else:
             print sigma_x, sigma_y
-            im = sp.ndimage.gaussian_filter(im, sigma=[sigma_x, sigma_y])
+            im = sp.ndimage.gaussian_filter(im, sigma=[sigma_y, sigma_x])
         
         
         plt.imshow(im, origin='lower', cmap=cmap, aspect=self.z_resolution/self.xy_resolution, interpolation='nearest')
@@ -154,7 +154,7 @@ class StainDataset(object):
         
         if plot_mask:
             m = self.get_axial_mask(slice, thr=thr)            
-            plt.contour(m, origin='lower', colors=['green'], levels=[0,1])
+            plt.contour(m, origin='lower', colors=[outline_color], levels=[0,1])
 
         yticklabels = []
         for i in plt.yticks()[0]:
@@ -170,7 +170,7 @@ class StainDataset(object):
             plt.xlim(self.xlim[0] - self.crop_margin, self.xlim[1] + self.crop_margin)
         
         
-    def plot_coronal_slice(self, slice=None, stain='SMI32', fwhm=0.15, cmap=plt.cm.hot, plot_mask=True, crop=True, thr=3, **kwargs):
+    def plot_coronal_slice(self, slice=None, stain='SMI32', outline_color='green', fwhm=0.15, cmap=plt.cm.hot, plot_mask=True, crop=True, mask_out=False, thr=3, **kwargs):
         
         if slice == None:
             slice = np.abs(self.slice_available.index.values - int(self.center_of_mass[1])).argmin()
@@ -183,14 +183,18 @@ class StainDataset(object):
         
         im = self.get_coronal_slice(slice, stain)
         im = sp.ndimage.gaussian_filter(im, sigma=[sigma_x, sigma_y])
+
+
+        if mask_out or plot_mask:
+            m = self.get_coronal_mask(slice, thr=thr)            
+
+            if mask_out:
+                im = np.ma.masked_array(im, 
+            if plot_mask:
+                plt.contour(m, origin='lower', colors=[outline_color], levels=[0,1])
         
         plt.imshow(im, origin='lower', cmap=cmap, aspect=1, interpolation='nearest')
         plt.axis('off')
-        
-        
-        if plot_mask:
-            m = self.get_coronal_mask(slice, thr=thr)            
-            plt.contour(m, origin='lower', colors=['green'], levels=[0,1])
         
         plt.title('y = %d' % slice)
         
@@ -219,7 +223,7 @@ class StainDataset(object):
                 self.data[self._get_index_slice(slice), ..., self._get_index_stain(stain)] = new_slice
             else:
                 print ' * slice %s' % slice + ' (can NOT be interpolated)'
-                self.data[self._get_index_slice(slice), ...] = np.nan
+                #self.data[self._get_index_slice(slice), ...] = np.nan
                 
 
 
