@@ -9,5 +9,5 @@ subject_ids = [int(fn.split('/')[-1]) for fn in fns]
 
 for subject_id in subject_ids:
     dataset = StainDataset(subject_id)
-    cluster = StainCluster(dataset)
+    cluster = StainCluster(dataset, fwhm=0.3)
     cluster.make_feature_vector()
