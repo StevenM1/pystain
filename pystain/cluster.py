@@ -221,10 +221,10 @@ class StainCluster(object):
             xlim = self.stain_dataset.xlim
             xlim = xlim[0]-self.stain_dataset.crop_margin, xlim[1]+self.stain_dataset.crop_margin
             
-            extent = self.get_x_coordinate(xlim[0]), self.get_x_coordinate(xlim[1]), self.get_slice_coordinate(self.slices[0]), self.get_slice_coordinate(self.slices[-1])
+            extent = self.get_x_coordinate(xlim[0]), self.get_x_coordinate(xlim[1]), self.get_slice_coordinate(self.slices[-1]), self.get_slice_coordinate(self.slices[0])
             
             plt.imshow(cluster_probs[:, slice, xlim[0]:xlim[1], component-1], 
-                       origin='lower', 
+                       origin='upper', 
                        cmap=self.cluster_cmaps[component-1], 
                        interpolation='nearest',
                        extent=extent,
@@ -240,10 +240,10 @@ class StainCluster(object):
             zlim = self.stain_dataset.zlim
             zlim = zlim[0]-self.stain_dataset.crop_margin, zlim[1]+self.stain_dataset.crop_margin
             
-            extent = self.get_slice_coordinate(self.slices[0]), self.get_slice_coordinate(self.slices[-1]), self.get_z_coordinate(zlim[1]), self.get_z_coordinate(zlim[0])
+            extent = self.get_slice_coordinate(self.slices[-1]), self.get_slice_coordinate(self.slices[0]), self.get_z_coordinate(zlim[1]), self.get_z_coordinate(zlim[0])
             
-            plt.imshow(cluster_probs[::-1, zlim[0]:zlim[1], slice, component-1].T, 
-#                        origin='lower', 
+            plt.imshow(cluster_probs[:, zlim[0]:zlim[1], slice, component-1].T, 
+                       origin='upper',
                        cmap=self.cluster_cmaps[component-1], 
                        interpolation='nearest',
                        extent=extent,
@@ -265,13 +265,13 @@ class StainCluster(object):
         assert((q >= 0) and (q <= 1))
         
         if orientation == 'coronal':
-            return self.get_nearest_active_slice(coordinate=self.slices[0] + q * (self.slices[-1] - self.slices[0]))
+            return self.get_nearest_active_slice(coordinate=self.slices[-1] - q * (self.slices[-1] - self.slices[0]))
         
         if orientation == 'sagittal':
             return int(self.stain_dataset.xlim[0] + q * (self.stain_dataset.xlim[1] - self.stain_dataset.xlim[0]))
         
         if orientation == 'axial':
-            return int(self.stain_dataset.zlim[0] + q * (self.stain_dataset.zlim[1] - self.stain_dataset.zlim[0]))
+            return int(self.stain_dataset.zlim[1] - q * (self.stain_dataset.zlim[1] - self.stain_dataset.zlim[0]))
         
         
     def drop_slices(self, slices):
@@ -335,14 +335,14 @@ class StainCluster(object):
     
     
     def get_slice_coordinate(self, slice):        
-        return (slice - self.slices[0]) / 50 * self.stain_dataset.z_resolution
+        return (self.slices[-1] - slice) / 50 * self.stain_dataset.z_resolution
     
     
     def get_x_coordinate(self, x):
         return (x - self.stain_dataset.xlim[0]) * self.stain_dataset.xy_resolution
     
     def get_z_coordinate(self, z):
-        return -(z - self.stain_dataset.zlim[1]) * self.stain_dataset.xy_resolution    
+        return (self.stain_dataset.zlim[1] - z) * self.stain_dataset.xy_resolution    
     
     
     def get_nearest_active_slice(self, index=None, coordinate=None):    
