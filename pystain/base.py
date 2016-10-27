@@ -189,7 +189,7 @@ class StainDataset(object):
             m = self.get_coronal_mask(slice, thr=thr)            
 
             if mask_out:
-                im = np.ma.masked_array(im, 
+                im = np.ma.masked_array(im, ~m)
             if plot_mask:
                 plt.contour(m, origin='lower', colors=[outline_color], levels=[0,1])
         
