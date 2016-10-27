@@ -242,8 +242,8 @@ class StainCluster(object):
             
             extent = self.get_slice_coordinate(self.slices[-1]), self.get_slice_coordinate(self.slices[0]), self.get_z_coordinate(zlim[1]), self.get_z_coordinate(zlim[0])
             
-            plt.imshow(cluster_probs[:, zlim[0]:zlim[1], slice, component-1].T, 
-                       origin='upper',
+            plt.imshow(cluster_probs[::-1, zlim[0]:zlim[1], slice, component-1].T, 
+                       origin='lower',
                        cmap=self.cluster_cmaps[component-1], 
                        interpolation='nearest',
                        extent=extent,
@@ -271,7 +271,7 @@ class StainCluster(object):
             return int(self.stain_dataset.xlim[0] + q * (self.stain_dataset.xlim[1] - self.stain_dataset.xlim[0]))
         
         if orientation == 'axial':
-            return int(self.stain_dataset.zlim[1] - q * (self.stain_dataset.zlim[1] - self.stain_dataset.zlim[0]))
+            return int(self.stain_dataset.zlim[1] + q * (self.stain_dataset.zlim[0] - self.stain_dataset.zlim[1]))
         
         
     def drop_slices(self, slices):
