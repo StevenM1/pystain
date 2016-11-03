@@ -29,7 +29,7 @@ class StainCluster(object):
         self.mask = (self.stain_dataset.mask.value.sum(-1) > self.thr)
         self._com = None
         
-        self.stains = stain_dataset.slice_available.columns.tolist()
+        #self.stains = stain_dataset.slice_available.columns.tolist()
         self.slices = stain_dataset.slice_available.index.tolist()
         
         
@@ -61,7 +61,7 @@ class StainCluster(object):
             
         else:
         
-            X = np.zeros_like(dataset.data)
+            X = np.zeros_like(self.stain_dataset.data)
 
             print 'Smoothing with FWHM of %.2f mm' % self.fwhm
 
@@ -71,7 +71,7 @@ class StainCluster(object):
 
 
             for stain_idx in np.arange(X.shape[-1]):
-                print ' *  %s' % self.stains[stain_idx]
+                print ' *  %s' % self.stain_dataset.stains[stain_idx]
                 data = self.stain_dataset.data.value[..., stain_idx]
                 X[..., stain_idx] = self._smooth_within_mask(data, self.mask, [sigma_z, sigma_xy, sigma_xy])
 
@@ -82,13 +82,17 @@ class StainCluster(object):
             h5_file = h5py.File(cache_fn)
             h5_file.create_dataset('feature_vector', data=self.feature_vector)
             h5_file.close()
+
+
+        self.vmin = np.nanmin(self.feature_vector, 0)
+        self.vmax = np.nanmax(self.feature_vector, 0)
         
     
     
     def get_dataframe(self):
         
         if self.feature_vector is not None:
-            return pandas.DataFrame(self.feature_vector, columns=self.stains)
+            return pandas.DataFrame(self.feature_vector, columns=self.stain_dataset.stains)
         
         else:
             raise Exception("First generate feature vector")
@@ -141,7 +145,7 @@ class StainCluster(object):
         
             
         for gmm in gmms:
-            f = pandas.DataFrame(gmm.means_, columns=self.stains)
+            f = pandas.DataFrame(gmm.means_, columns=self.stain_dataset.stains)
             f['cluster'] = ['Cluster %d (w=%.2f)' % (i +1, gmm.weights_[i]) for i in np.arange(gmm.n_components)]
             f = pandas.melt(f, var_name='stain', id_vars=['cluster'])
 
@@ -243,7 +247,7 @@ class StainCluster(object):
             extent = self.get_slice_coordinate(self.slices[-1]), self.get_slice_coordinate(self.slices[0]), self.get_z_coordinate(zlim[1]), self.get_z_coordinate(zlim[0])
             
             plt.imshow(cluster_probs[::-1, zlim[0]:zlim[1], slice, component-1].T, 
-                       origin='lower',
+                       origin='upper',
                        cmap=self.cluster_cmaps[component-1], 
                        interpolation='nearest',
                        extent=extent,
@@ -257,6 +261,141 @@ class StainCluster(object):
             
         plt.axis('on')
         sns.despine()
+
+
+    def plot_stain_cluster(self, orientation='coronal', component=1, n_components=None, slice=None, stain='SMI32', linewidth=3, mask_thr=0.5, cmap=plt.cm.gray,  **kwargs):
+            
+            if component < 1:
+                raise Exception('Component indices start at 1!')
+            
+            
+            if slice is None:
+                if orientation == 'coronal':
+                    slice = self.get_nearest_active_slice(self.center_of_mass[0])
+                elif orientation == 'sagittal':
+                    slice = self.center_of_mass[2]
+                elif orientation == 'axial':
+                    slice = self.center_of_mass[1]
+                    
+                    
+            if n_components is None:
+                n_components = np.max(self.cluster_n_components)
+                    
+                    
+            cluster_probs = self.get_cluster_predictions(n_components)
+
+            
+            if orientation == 'coronal':
+                
+
+                vmin = self.vmin[self.stain_dataset.stains.index(stain)]
+                vmax = self.vmax[self.stain_dataset.stains.index(stain)]
+
+                self.stain_dataset.plot_coronal_slice(slice=slice, cmap=cmap, fwhm=self.fwhm, stain=stain, vmin=vmin, vmax=vmax)
+                
+                if slice not in self.active_slices:
+                    print '*** Warning *** Slice %d not used in clustering' % slice
+                
+                slice = self.slices.index(slice)
+                
+                
+                xlim = self.stain_dataset.xlim[0] - self.stain_dataset.crop_margin, self.stain_dataset.xlim[1] + self.stain_dataset.crop_margin
+                zlim = self.stain_dataset.zlim[0] - self.stain_dataset.crop_margin, self.stain_dataset.zlim[1] + self.stain_dataset.crop_margin
+
+                extent = self.get_x_coordinate(xlim[0]), self.get_x_coordinate(xlim[1]), self.get_z_coordinate(zlim[1]), self.get_z_coordinate(zlim[0])            
+
+                
+                for component in np.arange(n_components):
+                    cluster_mask = cluster_probs[slice, zlim[0]:zlim[1], xlim[0]:xlim[1], component]
+                    cluster_mask = (cluster_mask > mask_thr)
+                    cluster_mask = ndimage.binary_erosion(cluster_mask, iterations=linewidth)
+
+                    
+                    plt.contour(cluster_mask, 
+                               origin='upper', 
+                               extent=extent,
+                               aspect=1,
+                                colors=[self.cluster_palette[component]],
+                                levels=[0, 2],
+                                linewidth=[linewidth],
+                               **kwargs)
+                    
+                plt.title('Coronal slice %d (%.2fmm)\n' % (self.stain_dataset.slice_available.index[slice], self.get_slice_coordinate(self.stain_dataset.slice_available.index[slice])))
+                
+                
+                
+
+            if orientation == 'axial':
+                
+                self.stain_dataset.plot_axial_slice(slice=slice, cmap=cmap, stain=stain)
+                
+                
+                xlim = self.stain_dataset.xlim
+                xlim = xlim[0]-self.stain_dataset.crop_margin, xlim[1]+self.stain_dataset.crop_margin
+                
+                extent = self.get_x_coordinate(xlim[0]), self.get_x_coordinate(xlim[1]), self.get_slice_coordinate(self.slices[-1]), self.get_slice_coordinate(self.slices[0])
+                
+                for component in np.arange(n_components):
+                    print component
+                    
+                    cluster_mask = cluster_probs[:, slice, xlim[0]:xlim[1], component]
+                    cluster_mask = (cluster_mask > mask_thr)
+                    cluster_mask = ndimage.binary_erosion(cluster_mask, iterations=linewidth)
+                    
+                    print cluster_mask.sum()
+                    
+                    plt.contour(cluster_mask, 
+                               origin='upper', 
+                               extent=extent,
+                               aspect=1,
+                                colors=[self.cluster_palette[component]],
+                                levels=[0, 2],
+                                linewidth=[linewidth],
+                               **kwargs)                
+                
+                plt.title('Axial slice %d (%.2fmm)\n' % (slice, self.get_z_coordinate(slice)))
+    # 
+                
+    #         elif orientation == 'axial':
+    #             xlim = self.stain_dataset.xlim
+    #             xlim = xlim[0]-self.stain_dataset.crop_margin, xlim[1]+self.stain_dataset.crop_margin
+                
+    #             extent = self.get_x_coordinate(xlim[0]), self.get_x_coordinate(xlim[1]), self.get_slice_coordinate(self.slices[-1]), self.get_slice_coordinate(self.slices[0])
+                
+    #             plt.imshow(cluster_probs[:, slice, xlim[0]:xlim[1], component-1], 
+    #                        origin='upper', 
+    #                        cmap=self.cluster_cmaps[component-1], 
+    #                        interpolation='nearest',
+    #                        extent=extent,
+    #                        aspect=1,
+    #                        **kwargs)            
+                
+                
+    #             plt.title('Axial slice %d (%.2fmm)\n' % (slice, self.get_z_coordinate(slice)))
+            
+    #         elif orientation == 'sagittal':
+    # #             plt.imshow(cluster_probs[:, :, slice, component-1].T, origin='lower', cmap=self.cluster_cmaps[component-1], aspect=self.stain_dataset.xy_resolution/self.stain_dataset.z_resolution, interpolation='nearest', **kwargs)
+
+    #             zlim = self.stain_dataset.zlim
+    #             zlim = zlim[0]-self.stain_dataset.crop_margin, zlim[1]+self.stain_dataset.crop_margin
+                
+    #             extent = self.get_slice_coordinate(self.slices[-1]), self.get_slice_coordinate(self.slices[0]), self.get_z_coordinate(zlim[1]), self.get_z_coordinate(zlim[0])
+                
+    #             plt.imshow(cluster_probs[::-1, zlim[0]:zlim[1], slice, component-1].T, 
+    #                        origin='upper',
+    #                        cmap=self.cluster_cmaps[component-1], 
+    #                        interpolation='nearest',
+    #                        extent=extent,
+    #                        aspect=1,
+    #                        **kwargs)     
+                
+    # #             zlim = self.stain_dataset.zlim
+    # #             plt.ylim(zlim[0]-self.stain_dataset.crop_margin, zlim[1]+self.stain_dataset.crop_margin, )
+                
+    #             plt.title('Sagittal slice %d (%.2fmm)' % (slice, self.get_x_coordinate(slice)))            
+                
+            plt.axis('on')
+            sns.despine()
         
     
     
@@ -314,12 +453,12 @@ class StainCluster(object):
         if not hasattr(self, 'feature_vector'):
             raise Exception("First get the feature vector")
             
-        stain_idx = self.stains.index(stain)
+        stain_idx = self.stain_dataset.stains.index(stain)
             
         self.stain_dataset.data = np.delete(self.stain_dataset.data, stain_idx, -1)
         self.feature_vector = np.delete(self.feature_vector, stain_idx, -1)
         
-        self.stains.pop(stain_idx)
+        self.stain_dataset.stains.pop(stain_idx)
         
         print "Dropped stain %s" % stain
         
