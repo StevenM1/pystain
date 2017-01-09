@@ -6,6 +6,7 @@ import h5py
 import scipy as sp
 from scipy import ndimage
 from .utils import smooth_within_mask
+import pandas
 
 class StainDataset(object):
     
@@ -38,6 +39,8 @@ class StainDataset(object):
 
         self.thresholded_mask = self.mask.value.sum(-1) > thr
 
+        self._smoothed_dataframe = None
+
         # Get smoothed data
         key = 'data_smoothed_%s_thr_%s' % (fwhm, thr)
         
@@ -56,19 +59,21 @@ class StainDataset(object):
                 
                 self.smoothed_data[..., i] = smooth_within_mask(self.data[..., i], self.thresholded_mask, [sigma_z, sigma_xy, sigma_xy])
 
-
-            self.get_vminmax()
+            
                         
             
             self.h5file.create_dataset(key, data=self.smoothed_data)
-            self.h5file.create_dataset(key + '_vmin', data=self.vmin_)
-            self.h5file.create_dataset(key + '_vmax', data=self.vmax_)
+            self.smoothed_data = self.h5file[key]
+            self.get_vminmax()
+            self.h5file.create_dataset(key + '_vmin', data=self._vmin)
+            self.h5file.create_dataset(key + '_vmax', data=self._vmax)
+            self.h5file.flush()
 
             
         else:
             self.smoothed_data = self.h5file[key]
-            self.vmin_ = self.h5file[key + '_vmin']
-            self.vmax_ = self.h5file[key + '_vmax']
+            self._vmin = self.h5file[key + '_vmin'].value
+            self._vmax = self.h5file[key + '_vmax'].value
 
         # mask details
         self._center_of_mass = None
@@ -94,6 +99,14 @@ class StainDataset(object):
             
         return self._center_of_mass
     
+    @property
+    def smoothed_dataframe(self):
+        
+        if self._smoothed_dataframe is None:
+            self._smoothed_dataframe = pandas.DataFrame(self.smoothed_data.value[self.thresholded_mask], columns=self.stains)
+            
+        return self._smoothed_dataframe
+
     def get_limits(self):
         
         _, zs, xs = np.where(self.thresholded_mask > 0)
@@ -133,12 +146,12 @@ class StainDataset(object):
             
         return self._zlim    
 
-    def get_vminmax(self, percentiles=(5, 95)):
+    def get_vminmax(self, percentiles=(0, 99)):
         print 'calculating vmin'
-        self.vmin_ = np.nanpercentile(self.smoothed_data.value[self.thresholded_mask, ...], percentiles[0], -1)
+        self._vmin = np.nanpercentile(self.smoothed_data.value[self.thresholded_mask, ...], percentiles[0], 0)
 
         print 'calculating vmax'
-        self.vmax_ = np.nanpercentile(self.smoothed_data.value[self.thresholded_mask, ...], percentiles[1], -1)
+        self._vmax = np.nanpercentile(self.smoothed_data.value[self.thresholded_mask, ...], percentiles[1], 0)
     
     
     def get_coronal_slice(self, slice, stain=None, smoothed=True):
@@ -258,7 +271,7 @@ class StainDataset(object):
         
     def plot_coronal_slice(self, slice=None, stain='SMI32', outline_color='black', fwhm=0.15, cmap=plt.cm.hot, plot_mask=False, crop=True, smoothed=True, mask_out=True, **kwargs):
             
-            if slice == None:
+            if slice is None:
                 slice = np.abs(self.slice_available.index.values - int(self.center_of_mass[0])).argmin()
                 slice = self.slice_available.iloc[slice].name
 
@@ -328,7 +341,7 @@ class StainDataset(object):
                 
                 
             if plot_mask:
-                plt.contour(mask[:, ylim[0]:ylim[1]].T, origin='upper', colors=[outline_color], levels=[0,1], extent=extent)
+                plt.contour(mask[::-1, ylim[0]:ylim[1]].T, origin='upper', colors=[outline_color], levels=[0,1], extent=extent)
 
 
     def interpolate_stain(self, stain):

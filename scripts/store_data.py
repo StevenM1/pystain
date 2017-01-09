@@ -79,7 +79,7 @@ raters_b = ['MCK', 'AA']
 
 import os
 
-for subject_id, d in df.groupby(['subject_id']):
+for subject_id, d in df[df.subject_id == 13095].groupby(['subject_id']):
     print subject_id
     
     slices = natsort.natsorted(d.slice.unique())

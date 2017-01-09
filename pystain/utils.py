@@ -18,6 +18,6 @@ def smooth_within_mask(data, mask, sigma):
 
     new_data=VV/WW
     
-    new_data[~mask] = data[~mask]
+    new_data[~mask] = np.nan
 
     return new_data
