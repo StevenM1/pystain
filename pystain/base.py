@@ -17,7 +17,7 @@ class StainDataset(object):
     crop_margin = 50
     
     
-    def __init__(self, subject_id, thr=3, fwhm=0.15):
+    def __init__(self, subject_id, thr=3, fwhm=0.30):
         
         self.subject_id = subject_id
         h5file = os.path.join(self.base_dir, str(subject_id), 'images.hdf5')
@@ -222,7 +222,7 @@ class StainDataset(object):
     def get_sagittal_slice(self, slice, stain=None, smoothed=True, gradient=False):
         
         if gradient:
-            data = self.gradient_magnitude_smoothed
+            data = self.gradient_image
         else:
             if smoothed:
                 data = self.smoothed_data
@@ -313,20 +313,30 @@ class StainDataset(object):
                 plt.contour(mask[:, xlim[0]:xlim[1]], origin='upper', colors=[outline_color], levels=[0,1], extent=extent)
         
         
-    def plot_coronal_slice(self, slice=None, stain='SMI32', outline_color='black', fwhm=0.15, cmap=plt.cm.hot, plot_mask=False, crop=True, smoothed=True, mask_out=True, **kwargs):
+    def plot_coronal_slice(self, slice=None, image=None, gradient=False, stain='SMI32', outline_color='black', cmap=plt.cm.hot, plot_mask=False, crop=True, smoothed=True, mask_out=True, **kwargs):
             
             if slice is None:
                 slice = np.abs(self.slice_available.index.values - int(self.center_of_mass[0])).argmin()
                 slice = self.slice_available.iloc[slice].name
 
+            if image is None:
+
+                if image == 'gradient_image':
+                    gradient = True
+                
+                image = self.get_coronal_slice(slice, stain, smoothed=smoothed, gradient=gradient)
+
+                if len(image.shape) != 2:
+                    image = image[:, slice, :]
+
             
             mask = self.get_coronal_mask(slice)
-            
-            im = self.get_coronal_slice(slice, stain, smoothed=smoothed)
 
+            print image.shape, mask.shape
 
             if mask_out:
-                im = np.ma.masked_array(im, ~mask)
+                image = np.ma.masked_array(image, ~mask)
+            
             
             plt.title('Coronal slice %d (%.2fmm)\n' % (slice, self.get_slice_coordinate(slice)))
             
@@ -347,7 +357,7 @@ class StainDataset(object):
                     vmin = None
                     vmax = None
 
-                plt.imshow(im[zlim[0]:zlim[1], xlim[0]:xlim[1]], cmap=cmap, aspect=1, extent=extent, interpolation='nearest', vmin=vmin, vmax=vmax, **kwargs)
+                plt.imshow(image[zlim[0]:zlim[1], xlim[0]:xlim[1]], cmap=cmap, aspect=1, extent=extent, interpolation='nearest', vmin=vmin, vmax=vmax, **kwargs)
                 
                 
             if plot_mask:
@@ -355,18 +365,24 @@ class StainDataset(object):
     #             plt.imshow(mask[zlim[0]:zlim[1]:, xlim[0]:xlim[1]])
 
 
-    def plot_sagittal_slice(self, slice=None, stain='SMI32', outline_color='black', fwhm=0.15, cmap=plt.cm.hot, plot_mask=False, crop=True, smoothed=True, mask_out=True, **kwargs):
+    def plot_sagittal_slice(self, slice=None, image=None, gradient=False, stain='SMI32', outline_color='black', cmap=plt.cm.hot, plot_mask=False, crop=True, smoothed=True, mask_out=True, **kwargs):
             
             if slice == None:
                 slice = self.center_of_mass[2]
 
-            
             mask = self.get_sagittal_mask(slice)
-            
-            im = self.get_sagittal_slice(slice, stain, smoothed=smoothed)
 
-            if mask_out:
-                im = np.ma.masked_array(im, ~mask)
+            if image is None:
+                if image == 'gradient_image':
+                    gradient = True
+                
+                image = self.get_sagittal_slice(slice, stain, smoothed=smoothed, gradient=gradient)
+
+                if len(image.shape) != 2:
+                    image = image[:, slice, :]
+
+                if mask_out:
+                    image = np.ma.masked_array(image, ~mask)
             
             plt.title('Sagittal slice %d (%.2fmm)\n' % (slice, self.get_x_coordinate(slice)))
 
@@ -381,7 +397,7 @@ class StainDataset(object):
                     vmax = None
 
                 extent = self.get_slice_coordinate(self.slices[-1]), self.get_slice_coordinate(self.slices[0]), self.get_z_coordinate(ylim[1]), self.get_z_coordinate(ylim[0]), 
-                plt.imshow(im[::-1, ylim[0]:ylim[1]].T, origin='upper', cmap=cmap, aspect=1, extent=extent, interpolation='nearest', vmin=vmin,vmax=vmax)
+                plt.imshow(image[::-1, ylim[0]:ylim[1]].T, origin='upper', cmap=cmap, aspect=1, extent=extent, interpolation='nearest', vmin=vmin,vmax=vmax)
                 
                 
             if plot_mask:
