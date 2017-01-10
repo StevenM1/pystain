@@ -498,3 +498,287 @@ class StainCluster(object):
     def find_nearest(array,value):
         idx = (np.abs(array-value)).argmin()
         return array[idx]
+
+max_n_components = 6
+
+cluster_colors = [sns.light_palette((i * 360 / max_n_components, 90, 60), 256, input="husl") for i in np.arange(max_n_components)]
+cluster_cmaps = [sns.light_palette((i * 360 / max_n_components, 90, 60), 256, input="husl", as_cmap=True) for i in np.arange(max_n_components)]
+
+def plot_clusters_coronal(slice, stain, ds, model, n_clusters=2):
+    
+    
+    if slice is None:
+        slice = np.abs(ds.slice_available.index.values - int(ds.center_of_mass[0])).argmin()
+        slice = ds.slice_available.iloc[slice].name
+        
+    df = ds.smoothed_dataframe    
+    n = 10000    
+    stepsize = df.shape[0] / n
+    df = df[~df[stain].isnull()]
+    x = df[stain].values[::stepsize]
+    
+    im = ds.get_coronal_slice(slice, stain)
+    im -= x.min()
+    im /= x.max()
+    
+
+    
+    cluster_probs = model.w * exgauss_pdf(im[..., np.newaxis], model.mu, model.nu, model.sigma)
+    
+    cluster_probs_norm = cluster_probs / cluster_probs.sum(-1)[..., np.newaxis]
+    cluster_labels = np.argmax(cluster_probs_norm, -1)
+    
+    xlim = ds.xlim[0] - ds.crop_margin, ds.xlim[1] + ds.crop_margin
+    zlim = ds.zlim[0] - ds.crop_margin, ds.zlim[1] + ds.crop_margin
+    extent = ds.get_x_coordinate(xlim[0]), ds.get_x_coordinate(xlim[1]), ds.get_z_coordinate(zlim[1]), ds.get_z_coordinate(zlim[0])
+    
+    
+    for i in xrange(n_clusters):
+        tmp = np.ma.masked_array(cluster_probs_norm[..., i], cluster_labels != i)
+        plt.imshow(tmp[zlim[0]:zlim[1], xlim[0]:xlim[1]], cmap=cluster_cmaps[i], vmin=1./n_clusters, vmax=1., extent=extent, interpolation='nearest')
+    
+
+def plot_clusters_axial(slice, stain, ds, model, n_clusters=2):
+    
+    
+    if slice is None:
+        slice = ds.center_of_mass[1]
+        
+    df = ds.smoothed_dataframe    
+    n = 10000    
+    stepsize = df.shape[0] / n
+    df = df[~df[stain].isnull()]
+    x = df[stain].values[::stepsize]
+    
+    im = ds.get_axial_slice(slice, stain)
+    im -= x.min()
+    im /= x.max()
+    
+
+    
+    cluster_probs = model.w * exgauss_pdf(im[..., np.newaxis], model.mu, model.nu, model.sigma)
+    
+    cluster_probs_norm = cluster_probs / cluster_probs.sum(-1)[..., np.newaxis]
+    cluster_labels = np.argmax(cluster_probs_norm, -1)
+    
+    xlim = ds.xlim[0] - ds.crop_margin, ds.xlim[1] + ds.crop_margin
+    extent = ds.get_x_coordinate(xlim[0]), ds.get_x_coordinate(xlim[1]), ds.get_slice_coordinate(ds.slices[-1]), ds.get_slice_coordinate(ds.slices[0])
+    
+    
+    for i in xrange(n_clusters):
+        tmp = np.ma.masked_array(cluster_probs_norm[..., i], cluster_labels != i)
+        plt.imshow(tmp[:, xlim[0]:xlim[1]], cmap=cluster_cmaps[i], vmin=1./n_clusters, vmax=1., extent=extent, interpolation='nearest')
+    
+
+def plot_clusters_sagittal(slice, stain, ds, model, n_clusters=2):
+    
+    
+    if slice is None:
+        slice = ds.center_of_mass[2]
+        
+    df = ds.smoothed_dataframe    
+    n = 10000    
+    stepsize = df.shape[0] / n
+    df = df[~df[stain].isnull()]
+    x = df[stain].values[::stepsize]
+    
+    im = ds.get_sagittal_slice(slice, stain)
+    im -= x.min()
+    im /= x.max()
+    
+
+    
+    cluster_probs = model.w * exgauss_pdf(im[..., np.newaxis], model.mu, model.nu, model.sigma)
+    
+    cluster_probs_norm = cluster_probs / cluster_probs.sum(-1)[..., np.newaxis]
+    cluster_labels = np.argmax(cluster_probs_norm, -1)
+    
+    ylim = ds.zlim[0] - ds.crop_margin, ds.zlim[1] + ds.crop_margin
+    extent = ds.get_slice_coordinate(ds.slices[-1]), ds.get_slice_coordinate(ds.slices[0]), ds.get_z_coordinate(ylim[1]), ds.get_z_coordinate(ylim[0]),
+    
+    
+    for i in xrange(n_clusters):
+        tmp = np.ma.masked_array(cluster_probs_norm[..., i], cluster_labels != i)
+        plt.imshow(tmp[::-1, ylim[0]:ylim[1]].T, origin='upper', cmap=cluster_cmaps[i], vmin=1./n_clusters, vmax=1., extent=extent, interpolation='nearest')
+    
+
+
+def exgauss_pdf(x, mu, sigma, nu):
+
+    nu = 1./nu
+
+    p1 = nu / 2. * np.exp((nu/2.)  * (2 * mu + nu * sigma**2. - 2. * x))
+
+
+    p2 = sp.special.erfc((mu + nu * sigma**2 - x)/ (np.sqrt(2.) * sigma))
+
+    return p1 * p2
+
+def mixed_exgauss_likelihood(x, w, mu, sigma, nu):
+
+    # Create indiviudal
+    pdfs = w * exgauss_pdf(x[:, np.newaxis], mu, nu, sigma)
+
+    ll = np.sum(np.log(np.sum(pdfs, 1)))
+
+    if ((np.isnan(ll)) | (ll == np.inf)):
+        return -np.inf
+
+
+    return ll
+
+def input_optimizer(pars, x, n_clusters):
+
+    pars = np.array(pars)
+
+    if np.sum(pars[:n_clusters-1]) > 1:
+        return np.inf
+
+    pars = np.insert(pars, n_clusters-1, 1 - np.sum(pars[:n_clusters-1]))
+
+    if np.any(pars[:n_clusters] < 0.05):
+        return np.inf
+
+    w = pars[:n_clusters][np.newaxis, :]
+    mu = pars[n_clusters:n_clusters*2][np.newaxis, :]
+    nu = pars[n_clusters*2:n_clusters*3][np.newaxis, :]
+    sigma = pars[n_clusters*3:n_clusters*4][np.newaxis, :]
+
+    return -mixed_exgauss_likelihood(x, w, mu, sigma, nu)
+
+
+def _fit(input_args, disp=False, popsize=100, **kwargs):
+
+    sp.random.seed()
+
+    x, n_clusters = input_args
+
+    weight_bounds = [(1e-3, 1)] * (n_clusters - 1)
+    mu_bounds = [(-1., 2.5)] * n_clusters
+    nu_bounds = [(1e-3, 2.5)] * n_clusters
+    sigma_bounds = [(1e-3, 2.5)] * n_clusters
+
+    bounds = weight_bounds + mu_bounds + nu_bounds + sigma_bounds
+
+    result = sp.optimize.differential_evolution(input_optimizer, bounds, (x, n_clusters), polish=True, disp=disp, maxiter=500, popsize=popsize, **kwargs)
+    result = sp.optimize.minimize(input_optimizer, result.x, (x, n_clusters), method='SLSQP', bounds=bounds, **kwargs)
+
+    return result
+
+class SimpleExgaussMixture(object):
+
+
+    def __init__(self, data, n_clusters):
+
+        self.data = data
+        self.n_clusters = n_clusters
+        self.n_parameters = n_clusters * 4 - 1
+        self.likelihood = -np.inf
+
+        self.previous_likelihoods = []
+        self.previous_pars = []
+
+
+    def get_likelihood_data(self, data):
+        
+        return mixed_exgauss_likelihood(data, self.w, self.mu, self.sigma, self.nu)
+    
+    def get_bic_data(self, data):
+        likelihood = self.get_likelihood_data(data)
+        return - 2 * likelihood + self.n_parameters * np.log(data.shape[0])
+        
+        
+    def get_aic_data(self, data):
+        likelihood = self.get_likelihood_data(data)
+        return 2 * self.n_parameters - 2  * likelihood
+    
+
+    def _fit(self, **kwargs):
+        return _fit((self.data, self.n_clusters), **kwargs)
+
+
+
+    def fit(self, n_tries=1, **kwargs):
+        for run in np.arange(n_tries):
+
+            result = self._fit(**kwargs)
+            self.previous_likelihoods.append(-result.fun)
+
+            if -result.fun > self.likelihood:
+
+                pars = result.x
+                pars = np.insert(pars, self.n_clusters-1, 1 - np.sum(pars[:self.n_clusters-1]))
+
+                self.w = pars[:self.n_clusters][np.newaxis, :]
+                self.mu = pars[self.n_clusters:self.n_clusters*2][np.newaxis, :]
+                self.nu = pars[self.n_clusters*2:self.n_clusters*3][np.newaxis, :]
+                self.sigma = pars[self.n_clusters*3:self.n_clusters*4][np.newaxis, :]
+
+                self.likelihood = -result.fun
+
+        self.aic = 2 * self.n_parameters - 2 * self.likelihood
+        self.bic = - 2 * self.likelihood + self.n_parameters * np.log(self.data.shape[0])
+
+
+
+    def fit_multiproc(self, n_tries=4, n_proc=4, disp=False):
+
+        pool = Pool(n_proc)
+
+        print 'starting pool'
+        results = pool.map(_fit, [(self.data, self.n_clusters)] * n_tries)
+        print 'ready'
+
+        print results
+
+
+
+        pool.close()
+
+        for result in results:
+            self.previous_likelihoods.append(-result.fun)
+            self.previous_pars.append(result.x)
+
+            if -result.fun > self.likelihood:
+
+                pars = result.x
+                pars = np.insert(pars, self.n_clusters-1, 1 - np.sum(pars[:self.n_clusters-1]))
+
+                self.w = pars[:self.n_clusters][np.newaxis, :]
+                self.mu = pars[self.n_clusters:self.n_clusters*2][np.newaxis, :]
+                self.nu = pars[self.n_clusters*2:self.n_clusters*3][np.newaxis, :]
+                self.sigma = pars[self.n_clusters*3:self.n_clusters*4][np.newaxis, :]
+
+                self.likelihood = -result.fun
+
+        self.aic = 2 * self.n_parameters - 2 * self.likelihood
+        self.bic = - 2 * self.likelihood + self.n_parameters * np.log(self.data.shape[0])
+
+    def plot_fit(self, colorized=False):
+        # Create indiviudal pds
+
+        t = np.linspace(0, self.data.max(), 1000)
+        pdfs = self.w * exgauss_pdf(t[:, np.newaxis], self.mu, self.nu, self.sigma)
+
+        sns.distplot(self.data, kde=False, norm_hist=True, color='grey')
+        
+        if colorized:
+            for i in xrange(self.n_clusters):
+                plt.plot(t, pdfs[:, i], c=cluster_colors[i][255])
+        else:            
+            plt.plot(t, pdfs, c='k', alpha=0.5)
+
+        plt.plot(t, np.sum(pdfs, 1), c='k', lw=2)
+        
+        plt.xlim(-.05, 1.)
+
+
+def sort_model_clusters(model):
+    idx = np.argsort(model.mu + model.nu)
+    
+    model.mu[0] = model.mu[0][idx]
+    model.nu[0] = model.nu[0][idx]
+    model.sigma[0] = model.sigma[0][idx]
+    model.w = model.w[0][idx]
+    
+    return model
