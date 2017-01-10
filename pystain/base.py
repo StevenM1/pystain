@@ -146,20 +146,54 @@ class StainDataset(object):
             
         return self._zlim    
 
+    @property
+    def gradient_image(self):
+
+        key = 'data_smoothed_%s_thr_%s_gradient_image' % (self.fwhm, self.thr)
+
+        if not key in self.h5file.keys():
+            self.get_gradient_images()
+
+        return self.h5file[key]
+
+
     def get_vminmax(self, percentiles=(0, 99)):
         print 'calculating vmin'
         self._vmin = np.nanpercentile(self.smoothed_data.value[self.thresholded_mask, ...], percentiles[0], 0)
 
         print 'calculating vmax'
         self._vmax = np.nanpercentile(self.smoothed_data.value[self.thresholded_mask, ...], percentiles[1], 0)
-    
-    
-    def get_coronal_slice(self, slice, stain=None, smoothed=True):
+   
+    def get_gradient_images(self):
+        
+        gradient_magnitude_smoothed = np.zeros_like(self.smoothed_data)
+        
+        for i in xrange(len(self.stains)):
+            print 'Calculcating gradient of %s' % self.stains[i]
+            d = np.gradient(self.smoothed_data[..., i])
+            dslice, dz, dx = d
+            dslice /= self.z_resolution
+            dz /= self.xy_resolution
+            dx /= self.xy_resolution
+            
+            gradient_magnitude_smoothed[..., i] = np.sqrt(dslice**2 + dz**2 + dx**2)
 
-        if smoothed:
-            data = self.smoothed_data
+        key = 'data_smoothed_%s_thr_%s_gradient_image' % (self.fwhm, self.thr)
+
+        self.h5file.create_dataset(key, data=gradient_magnitude_smoothed)
+        self.h5file.flush()
+                
+         
+    
+    def get_coronal_slice(self, slice, stain=None, smoothed=True, gradient=False):
+
+        if gradient:
+            data = self.gradient_image
         else:
-            data = self.data
+            if smoothed:
+                data = self.smoothed_data
+            else:
+                data = self.data
         
         if stain == None:
             return data[self._get_index_slice(slice), ...]
@@ -168,12 +202,15 @@ class StainDataset(object):
             return data[self._get_index_slice(slice), ..., self._get_index_stain(stain)]
 
         
-    def get_axial_slice(self, slice, stain=None, smoothed=True):
+    def get_axial_slice(self, slice, stain=None, smoothed=True, gradient=False):
         
-        if smoothed:
-            data = self.smoothed_data
+        if gradient:
+            data = self.gradient_image
         else:
-            data = self.data
+            if smoothed:
+                data = self.smoothed_data
+            else:
+                data = self.data
 
         if stain == None:
             return data[:, slice, :, ...]
@@ -182,12 +219,15 @@ class StainDataset(object):
             return data[:, slice, :, self._get_index_stain(stain)]
 
 
-    def get_sagittal_slice(self, slice, stain=None, smoothed=True):
+    def get_sagittal_slice(self, slice, stain=None, smoothed=True, gradient=False):
         
-        if smoothed:
-            data = self.smoothed_data
+        if gradient:
+            data = self.gradient_magnitude_smoothed
         else:
-            data = self.data
+            if smoothed:
+                data = self.smoothed_data
+            else:
+                data = self.data
 
         if stain == None:
             return data[:, :, slice, ...]
@@ -238,16 +278,20 @@ class StainDataset(object):
             self.plot_sagittal_slice(**kwargs)
 
 
-    def plot_axial_slice(self, slice=None, stain='SMI32', outline_color='black', cmap=plt.cm.hot, plot_mask=False, crop=True, smoothed=True, mask_out=True, **kwargs):
-            
-            if slice == None:
+    def plot_axial_slice(self, slice=None, stain='SMI32', image=None, gradient=False, outline_color='black', cmap=plt.cm.hot, plot_mask=False, crop=True, smoothed=True, mask_out=True, **kwargs):
+
+            if slice is None:
                 slice = self.center_of_mass[1]
-
-
             
+            if (image == 'gradient_image') or gradient:
+                im = self.get_axial_slice(slice, stain, smoothed=smoothed, gradient=True)
+            elif image is None:
+                im = self.get_axial_slice(slice, stain, smoothed=smoothed)
+
+            if len(im.shape) != 2:
+                im = image[:, slice, :]
+
             mask = self.get_axial_mask(slice)
-            
-            im = self.get_axial_slice(slice, stain, smoothed=smoothed)
 
             if mask_out:
                 im = np.ma.masked_array(im, ~mask)
