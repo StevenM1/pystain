@@ -17,11 +17,11 @@ class StainDataset(object):
     crop_margin = 50
     
     
-    def __init__(self, subject_id, thr=3, fwhm=None):
+    def __init__(self, subject_id, thr=3, fwhm=0.30):
         
         self.subject_id = subject_id
         h5file = os.path.join(self.base_dir, str(subject_id), 'images.hdf5')
-        print(h5file)
+        print h5file
         self.h5file = h5py.File(h5file)
         self.data = self.h5file['data']
         self.mask = self.h5file['mask']
@@ -39,44 +39,41 @@ class StainDataset(object):
         
         self.thresholded_mask = self.mask.value.sum(-1) > thr
         
-        self._dataframe = None
         self._smoothed_dataframe = None
 
+        # Get smoothed data
+        key = 'data_smoothed_%s_thr_%s' % (fwhm, thr)
         
-        if fwhm is not None:
-            # Get smoothed data
-            key = 'data_smoothed_%s_thr_%s' % (fwhm, thr)
+        if key not in self.h5file.keys():
+            print '%s not cached' % key
+            
+            self.interpolate_stains()
+            self.smoothed_data = np.zeros_like(self.data)
 
-            if key not in self.h5file.keys():
-                print('%s not cached' % key)
+            sigma = self.fwhm / 2.335
+            sigma_xy = sigma / self.xy_resolution # 
+            sigma_z = sigma / self.z_resolution # 
+            
+            for i, stain in enumerate(self.stains):
+                print "Smoothing %s" % stain
+                
+                self.smoothed_data[..., i] = smooth_within_mask(self.data[..., i], self.thresholded_mask, [sigma_z, sigma_xy, sigma_xy])
 
-                self.interpolate_stains()
-                self.smoothed_data = np.zeros_like(self.data)
+            
+                        
+            
+            self.h5file.create_dataset(key, data=self.smoothed_data)
+            self.smoothed_data = self.h5file[key]
+            self.get_vminmax()
+            self.h5file.create_dataset(key + '_vmin', data=self._vmin)
+            self.h5file.create_dataset(key + '_vmax', data=self._vmax)
+            self.h5file.flush()
 
-                sigma = self.fwhm / 2.335
-                sigma_xy = sigma / self.xy_resolution # 
-                sigma_z = sigma / self.z_resolution # 
-
-                for i, stain in enumerate(self.stains):
-                    print("Smoothing %s" % stain)
-
-                    self.smoothed_data[..., i] = smooth_within_mask(self.data[..., i], self.thresholded_mask, [sigma_z, sigma_xy, sigma_xy])
-
-
-
-
-                self.h5file.create_dataset(key, data=self.smoothed_data)
-                self.smoothed_data = self.h5file[key]
-                self.get_vminmax()
-                self.h5file.create_dataset(key + '_vmin', data=self._vmin)
-                self.h5file.create_dataset(key + '_vmax', data=self._vmax)
-                self.h5file.flush()
-
-
-            else:
-                self.smoothed_data = self.h5file[key]
-                self._vmin = self.h5file[key + '_vmin'].value
-                self._vmax = self.h5file[key + '_vmax'].value
+            
+        else:
+            self.smoothed_data = self.h5file[key]
+            self._vmin = self.h5file[key + '_vmin'].value
+            self._vmax = self.h5file[key + '_vmax'].value
 
         # mask details
         self._center_of_mass = None
@@ -101,14 +98,6 @@ class StainDataset(object):
             self._center_of_mass = tuple(self._center_of_mass)    
             
         return self._center_of_mass
-    
-    @property
-    def dataframe(self):
-        
-        if self._dataframe is None:
-            self._dataframe = pandas.DataFrame(self.data.value[self.thresholded_mask], columns=self.stains)
-            
-        return self._dataframe
     
     @property
     def smoothed_dataframe(self):
@@ -175,10 +164,10 @@ class StainDataset(object):
 
 
     def get_vminmax(self, percentiles=(0, 99)):
-        print('calculating vmin')
+        print 'calculating vmin'
         self._vmin = np.nanpercentile(self.smoothed_data.value[self.thresholded_mask, ...], percentiles[0], 0)
 
-        print('calculating vmax')
+        print 'calculating vmax'
         self._vmax = np.nanpercentile(self.smoothed_data.value[self.thresholded_mask, ...], percentiles[1], 0)
    
     def get_gradient_images(self):
@@ -187,7 +176,7 @@ class StainDataset(object):
         gradient_magnitude_smoothed = np.zeros_like(self.smoothed_data)
         
         for i in xrange(len(self.stains)):
-            print('Calculcating gradient of %s' % self.stains[i])
+            print 'Calculcating gradient of %s' % self.stains[i]
             # We are using a modified version of the gradient estimate. 
             # In our previous attempt we used the standard version but that did not take the large
             #  change of gradient at the borders into account. Therefore Steven Miletic build his own
@@ -210,7 +199,7 @@ class StainDataset(object):
         gradient_magnitude_smoothed = np.zeros_like(self.smoothed_data)
         
         for i in xrange(len(self.stains)):
-            print('Calculcating gradient of %s' % self.stains[i])
+            print 'Calculcating gradient of %s' % self.stains[i]
             # Note that we are using a standard function where we only look in plane within a given 
             # slice. 
             d = np.gradient(self.smoothed_data[..., i])
@@ -284,7 +273,7 @@ class StainDataset(object):
         
         if mask.sum() == 0:
             n_masks = (self.mask_pandas.slice == slice).sum()
-            print('Warning: only %d masks available for coronal slice %d' % (n_masks, slice))
+            print 'Warning: only %d masks available for coronal slice %d' % (n_masks, slice)
         
         return mask 
 
@@ -294,7 +283,7 @@ class StainDataset(object):
         mask = self.thresholded_mask[:, slice, :]
         if mask.sum() == 0:
             n_masks = self.mask[:, slice, :, :].sum(-1).max()
-            print('Warning: only %d masks available for axial slice %d' % (n_masks, slice))
+            print 'Warning: only %d masks available for axial slice %d' % (n_masks, slice)
 
         return mask
 
@@ -304,7 +293,7 @@ class StainDataset(object):
         mask = self.thresholded_mask[:, :, slice]
         if mask.sum() == 0:
             n_masks = self.mask[:, :, slice, :].sum(-1).max()
-            print('Warning: only %d masks available for axial slice %d' % (n_masks, slice))
+            print 'Warning: only %d masks available for axial slice %d' % (n_masks, slice)
 
         return mask
 
@@ -372,7 +361,7 @@ class StainDataset(object):
             
             mask = self.get_coronal_mask(slice)
 
-            print(image.shape, mask.shape)
+            print image.shape, mask.shape
 
             if mask_out:
                 image = np.ma.masked_array(image, ~mask)
@@ -450,23 +439,23 @@ class StainDataset(object):
         slices_not_available = self.slice_available[~self.slice_available[stain]].index.values
 
         if len(slices_not_available) == 0:
-            print("All slices available for stain %s!" % stain)
+            print "All slices available for stain %s!" % stain
         else:
-            print('Slices that are not available for stain %s:' % stain)
+            print 'Slices that are not available for stain %s:' % stain
         
         for slice in slices_not_available:
             slice_minus_one = slice - 50
             slice_plus_one = slice + 50
             if (slice_minus_one in slices_available) & (slice_plus_one in slices_available):
-                print(' * slice %s' % slice + ' (can be interpolated)')        
+                print ' * slice %s' % slice + ' (can be interpolated)'        
                 new_slice = 0.5 * self.get_coronal_slice(slice_minus_one, stain, smoothed=False) + 0.5 * self.get_coronal_slice(slice_plus_one, stain, smoothed=False)
-                
-                print(new_slice.dtype, new_slice.shape)
-                print(self.data.dtype, self.data.shape)
+		print new_slice.dtype, new_slice.shape
+		print self.data.dtype, self.data.shape
+		
                 
                 self.data[self._get_index_slice(slice), ..., self._get_index_stain(stain)] = new_slice
             else:
-                print(' * slice %s' % slice + ' (can NOT be interpolated)')
+                print ' * slice %s' % slice + ' (can NOT be interpolated)'
                 #self.data[self._get_index_slice(slice), ...] = np.nan
                 
     def get_slice_coordinate(self, slice):        
@@ -487,7 +476,7 @@ class StainDataset(object):
             stains = self.slice_available.columns
         
         for stain in stains:
-            print(" *** %s ***" % stain)
+            print " *** %s ***" % stain
             self.interpolate_stain(stain) 
 
 

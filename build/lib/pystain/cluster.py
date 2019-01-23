@@ -54,11 +54,11 @@ class StainCluster(object):
         
         if use_cache:
             h5_file = self.stain_dataset.h5file
-            X = h5_file['data_smoothed_%s_thr_3' %self.fwhm][:].copy()
+            X = h5_file['data_smoothed_0.3_thr_3'][:].copy()
 
             # get gradient matrices
-            gradient_X = h5_file['data_smoothed_%s_thr_3_gradient_image' %self.fwhm][:].copy()
-            gradient_X_2D = h5_file['data_smoothed_%s_thr_3_gradient_image_2D' %self.fwhm][:].copy()
+            gradient_X = h5_file['data_smoothed_0.3_thr_3_gradient_image'][:].copy()
+            gradient_X_2D = h5_file['data_smoothed_0.3_thr_3_gradient_image_2D'][:].copy()
         else:
             from .utils import get_gradients_3D
             # Do not use cached data, but recalculate smoothing
@@ -66,7 +66,7 @@ class StainCluster(object):
             gradient_X = np.zeros_like(self.stain_dataset.data)
             gradient_X_2D = np.zeros_like(self.stain_dataset.data)
             
-            print('Smoothing with FWHM of %.2f mm' % self.fwhm)
+            print 'Smoothing with FWHM of %.2f mm' % self.fwhm
 
             sigma = self.fwhm / 2.335
             sigma_xy = sigma / self.stain_dataset.xy_resolution # 
@@ -76,7 +76,7 @@ class StainCluster(object):
             for stain_idx in np.arange(X.shape[-1]):
                 # Re-smooth original data
                 
-                print(' *  %s' % self.stain_dataset.stains[stain_idx])
+                print ' *  %s' % self.stain_dataset.stains[stain_idx]
                 data = self.stain_dataset.data.value[..., stain_idx]
                 X[..., stain_idx] = self._smooth_within_mask(data, self.mask, [sigma_z, sigma_xy, sigma_xy])
                  
@@ -209,11 +209,11 @@ class StainCluster(object):
         self.gmms = [mixture.GMM(n_components=n, covariance_type='full') for n in n_components]
         
         if np.isnan(self.feature_vector).any():
-            print('Removing %d rows with NaNs' % np.isnan(self.feature_vector).any(1).sum())
+            print 'Removing %d rows with NaNs' % np.isnan(self.feature_vector).any(1).sum()
             self.feature_vector  = self.feature_vector[~np.isnan(self.feature_vector).any(1),:]
         
         for gmm in self.gmms:
-            print("Clustering with %d components" % gmm.n_components)
+            print "Clustering with %d components" % gmm.n_components
             gmm.fit(self.feature_vector)
             
         max_n_components = np.max(n_components)
@@ -287,7 +287,7 @@ class StainCluster(object):
         if orientation == 'coronal':
             
             if slice not in self.active_slices:
-                print('*** Warning *** Slice %d not used in clustering' % slice)
+                print '*** Warning *** Slice %d not used in clustering' % slice
             
             slice = self.slices.index(slice)
             
@@ -382,7 +382,7 @@ class StainCluster(object):
                 self.stain_dataset.plot_coronal_slice(slice=slice, cmap=cmap, fwhm=self.fwhm, stain=stain, vmin=vmin, vmax=vmax)
                 
                 if slice not in self.active_slices:
-                    print('*** Warning *** Slice %d not used in clustering' % slice)
+                    print '*** Warning *** Slice %d not used in clustering' % slice
                 
                 slice = self.slices.index(slice)
                 
@@ -424,13 +424,13 @@ class StainCluster(object):
                 extent = self.get_x_coordinate(xlim[0]), self.get_x_coordinate(xlim[1]), self.get_slice_coordinate(self.slices[-1]), self.get_slice_coordinate(self.slices[0])
                 
                 for component in np.arange(n_components):
-                    print(component)
+                    print component
                     
                     cluster_mask = cluster_probs[:, slice, xlim[0]:xlim[1], component]
                     cluster_mask = (cluster_mask > mask_thr)
                     cluster_mask = ndimage.binary_erosion(cluster_mask, iterations=linewidth)
                     
-                    print(cluster_mask.sum())
+                    print cluster_mask.sum()
                     
                     plt.contour(cluster_mask, 
                                origin='upper', 
@@ -509,7 +509,7 @@ class StainCluster(object):
         
         slices = [self.slices.index(slice) for slice in slices]
         
-        print(slices)
+        print slices
         
         feature_vector_tmp = np.zeros_like(self.stain_dataset.data)
         feature_vector_tmp[self.mask, :] = self.feature_vector
@@ -531,7 +531,7 @@ class StainCluster(object):
         nans = np.isnan(self.stain_dataset.data)
         slices = np.where(nans.reshape((nans.shape[0], np.prod(nans.shape[1:]))).any(1))[0]
         
-        print('Found %d incomplete slices (out of %d)' % (len(slices), len(self.slices)))
+        print 'Found %d incomplete slices (out of %d)' % (len(slices), len(self.slices))
         
         slices = [self.slices[s] for s in slices]
         return slices
@@ -548,7 +548,7 @@ class StainCluster(object):
         
         self.stain_dataset.stains.pop(stain_idx)
         
-        print("Dropped stain %s" % stain)
+        print "Dropped stain %s" % stain
         
         if hasattr(self, 'dropped_stains'):
             self.dropped_stains.append(stain)
@@ -813,11 +813,11 @@ class SimpleExgaussMixture(object):
 
         pool = Pool(n_proc)
 
-        print('starting pool')
+        print 'starting pool'
         results = pool.map(_fit, [(self.data, self.n_clusters)] * n_tries)
-        print('ready')
+        print 'ready'
 
-        print(results)
+        print results
 
 
 
