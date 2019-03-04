@@ -519,5 +519,5 @@ class StainDataset(object):
     
     @staticmethod
     def find_nearest(array,value):
-        idx = (np.abs(array-value)).argmin()
+        idx = (np.abs(np.array(array)-value)).argmin()
         return array[idx]
